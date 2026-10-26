@@ -7,6 +7,8 @@ await mkdir(output, { recursive: true });
 for (const file of [
   "index.html",
   "admin.html",
+  "prayer.html",
+  "sermons.html",
   "pastor.html",
   "founder.html",
   "robots.txt",
