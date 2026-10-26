@@ -74,8 +74,9 @@ async function fetchRecentUploads() {
     const field = (tag) => entry.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\/${tag}>`))?.[1] || "";
     const id = field("yt:videoId").trim();
     const title = field("title").replace(/&amp;/g, "&").trim();
-    return { id, title, publishedText: field("published").slice(0, 10), thumbnail: `https://i.ytimg.com/vi/${id}/hqdefault.jpg` };
-  }).filter((video) => /^[\w-]{11}$/.test(video.id) && video.title).slice(0, 5);
+    const views = Number(entry.match(/<media:statistics[^>]*views="(\d+)"/)?.[1] || 0);
+    return { id, title, views, publishedText: field("published").slice(0, 10), thumbnail: `https://i.ytimg.com/vi/${id}/hqdefault.jpg` };
+  }).filter((video) => /^[\w-]{11}$/.test(video.id) && video.title).slice(0, 15);
 }
 export default async () => {
   const results = await Promise.allSettled([
@@ -83,12 +84,15 @@ export default async () => {
     fetchVideos("/videos?view=0&sort=p&flow=grid&hl=en&gl=IN"),
     fetchRecentUploads(),
   ]);
+  const uploads = results[2].status === "fulfilled" ? results[2].value : [];
   let latestStreams = results[0].status === "fulfilled" ? results[0].value.slice(0, 5) : [];
-  const popularVideos = results[1].status === "fulfilled" ? results[1].value.slice(0, 5) : [];
-  if (!latestStreams.length && results[2].status === "fulfilled") latestStreams = results[2].value;
+  if (!latestStreams.length) latestStreams = uploads.slice(0, 5);
+  let popularVideos = results[1].status === "fulfilled" ? results[1].value.slice(0, 5) : [];
+  const popularFromRecent = !popularVideos.length && uploads.length > 0;
+  if (popularFromRecent) popularVideos = [...uploads].sort((a, b) => b.views - a.views).slice(0, 5);
   const hasError = !latestStreams.length || !popularVideos.length;
   if (!latestStreams.length && !popularVideos.length) {
-    return json({ latestStreams, popularVideos, error: "The channel video lists are temporarily unavailable." }, 502);
+    return json({ latestStreams, popularVideos, popularFromRecent, error: "The channel video lists are temporarily unavailable." }, 502);
   }
-  return json({ latestStreams, popularVideos, error: hasError ? "Some channel videos are temporarily unavailable." : null });
+  return json({ latestStreams, popularVideos, popularFromRecent, error: hasError ? (popularFromRecent ? "The full popular list is unavailable; recent uploads are ranked by their YouTube view counts." : "Some channel videos are temporarily unavailable.") : null });
 };
