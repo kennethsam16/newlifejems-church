@@ -7,9 +7,15 @@ await mkdir(output, { recursive: true });
 for (const file of [
   "index.html",
   "admin.html",
+  "pastor.html",
+  "founder.html",
   "robots.txt",
   "sitemap.xml",
   "founder.jpg",
+  "pastor-prayer-word.jpg",
+  "pastor-sunday-service.jpg",
+  "pastor-special-sunday.jpg",
+  "founder-dayanandhan-meeting.jpg",
   "newlifejems-church-logo.png",
   "pastor-pash-isaac-daniel.jpg",
 ]) {
