@@ -28,26 +28,36 @@ export default async (request) => {
       const prayerRequests = await Promise.all(blobs.map(({ key }) => store.get(key, { type: "json" })));
       prayerRequests.sort((a, b) => b.submittedAt.localeCompare(a.submittedAt));
       return json({ prayerRequests: prayerRequests.filter(Boolean) });
-    } catch {
+    } catch (error) {
+      console.error("[prayer-inbox] admin list failed", {
+        requestId: request.headers.get("x-nf-request-id") || "unknown",
+        errorName: error instanceof Error ? error.name : "UnknownError",
+        errorMessage: error instanceof Error ? error.message : String(error),
+      });
       return json({ error: "The prayer inbox is temporarily unavailable." }, 503);
     }
   }
 
   if (request.method !== "POST") return json({ error: "Method not allowed." }, 405);
 
+  let stage = "parse-form";
   try {
     const form = await request.formData();
     if (String(form.get("bot-field") || "").trim()) return json({ ok: true }, 202);
+    stage = "validate-request";
     const requestText = String(form.get("request") || "").trim().slice(0, 1200);
     if (requestText.length < 2) return json({ error: "Prayer request is required." }, 400);
 
     const submissionToken = String(form.get("submissionToken") || "");
     if (!/^[0-9a-f-]{36}$/i.test(submissionToken)) return json({ error: "Please refresh the page and try again." }, 400);
 
+    stage = "load-submission";
     const submissionKey = `submissions/${submissionToken}.json`;
     let submission = await store.get(submissionKey, { type: "json" });
     if (!submission?.requestId) {
+      stage = "allocate-reference";
       const candidateReference = await nextRequestReference();
+      stage = "save-submission-token";
       const created = await store.setJSON(submissionKey, { requestId: candidateReference }, { onlyIfNew: true });
       submission = created.modified
         ? { requestId: candidateReference }
@@ -68,6 +78,7 @@ export default async (request) => {
       anonymous: form.get("anonymous") === "on",
       submittedAt: new Date().toISOString(),
     };
+    stage = "save-prayer-request";
     const requestKey = `requests/${requestId}.json`;
     const created = await store.setJSON(requestKey, record, { onlyIfNew: true });
     if (!created.modified) {
@@ -75,7 +86,13 @@ export default async (request) => {
       if (!existing) throw new Error("Could not save the prayer request.");
     }
     return json({ ok: true, requestId }, 201);
-  } catch {
+  } catch (error) {
+    console.error("[prayer-inbox] submission failed", {
+      requestId: request.headers.get("x-nf-request-id") || "unknown",
+      stage,
+      errorName: error instanceof Error ? error.name : "UnknownError",
+      errorMessage: error instanceof Error ? error.message : String(error),
+    });
     return json({ error: "Could not save this request to the admin inbox." }, 500);
   }
 };
