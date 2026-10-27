@@ -61,10 +61,15 @@ export default async (request) => {
     const validCategories = new Set(["Announcement", "Upcoming event", "Church news", "Service update"]);
     if (!validCategories.has(category)) return respond({ error: "Choose a valid announcement type." }, 400);
 
-    const id = randomUUID();
+    const requestedId = String(form.get("id") || "").trim();
+    if (requestedId && !/^[0-9a-f-]{36}$/i.test(requestedId)) return respond({ error: "Invalid announcement." }, 400);
+    const id = requestedId || randomUUID();
+    const key = `posts/${id}.json`;
+    const existing = requestedId ? await store.get(key, { type: "json" }) : null;
+    if (requestedId && !existing) return respond({ error: "Announcement not found." }, 404);
     const image = form.get("image");
-    let imageKey = "";
-    let imageType = "";
+    let imageKey = existing?.imageKey || "";
+    let imageType = existing?.imageType || "";
     if (image && typeof image.arrayBuffer === "function" && image.size > 0) {
       const ext = allowedTypes.get(image.type);
       if (!ext) return respond({ error: "Images must be JPG, PNG, or WebP." }, 400);
@@ -72,6 +77,7 @@ export default async (request) => {
       imageKey = `uploads/${id}.${ext}`;
       imageType = image.type;
       await store.set(imageKey, await image.arrayBuffer());
+      if (existing?.imageKey && existing.imageKey !== imageKey) await store.delete(existing.imageKey);
     }
 
     const announcement = {
@@ -82,10 +88,11 @@ export default async (request) => {
       content,
       imageKey,
       imageType,
-      publishedAt: new Date().toISOString(),
+      publishedAt: existing?.publishedAt || new Date().toISOString(),
+      ...(existing ? { updatedAt: new Date().toISOString() } : {}),
     };
-    await store.setJSON(`posts/${id}.json`, announcement);
-    return respond({ ok: true, announcement }, 201);
+    await store.setJSON(key, announcement);
+    return respond({ ok: true, announcement }, existing ? 200 : 201);
   } catch {
     return respond({ error: "Could not save this announcement. Please try again." }, 500);
   }
