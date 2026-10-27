@@ -19,6 +19,7 @@ for (const file of [
   "pastor-special-sunday.jpg",
   "founder-dayanandhan-meeting.jpg",
   "newlifejems-church-logo.png",
+  "newlifejems-church-icon.jpg",
   "pastor-pash-isaac-daniel.jpg",
 ]) {
   await cp(new URL(file, root), new URL(file, output));
