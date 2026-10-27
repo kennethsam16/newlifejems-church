@@ -28,8 +28,10 @@ function findInitialData(html) {
     }
   }
   return null;
-}function text(value) {
+}
+function text(value) {
   if (typeof value === "string") return value;
+  if (typeof value?.content === "string") return value.content;
   if (value?.simpleText) return value.simpleText;
   if (Array.isArray(value?.runs)) return value.runs.map((run) => run.text || "").join("");
   return "";
@@ -40,14 +42,24 @@ function videosFrom(data) {
   function visit(node) {
     if (!node || typeof node !== "object") return;
     const renderer = node.videoRenderer || node.gridVideoRenderer || node.playlistVideoRenderer;
-    if (renderer?.videoId && !seen.has(renderer.videoId)) {
-      seen.add(renderer.videoId);
-      const thumbnails = renderer.thumbnail?.thumbnails || renderer.richThumbnail?.movingThumbnailRenderer?.movingThumbnailDetails?.thumbnails || [];
+    const lockup = node.lockupViewModel;
+    const id = renderer?.videoId || lockup?.contentId;
+    if (id && !seen.has(id)) {
+      seen.add(id);
+      const thumbnails = renderer?.thumbnail?.thumbnails || renderer?.richThumbnail?.movingThumbnailRenderer?.movingThumbnailDetails?.thumbnails || [];
+      const lockupMetadata = lockup?.metadata?.lockupMetadataViewModel;
+      const metadataRows = lockupMetadata?.metadata?.contentMetadataViewModel?.metadataRows || [];
+      const lockupPublishedText = metadataRows
+        .flatMap((row) => row.metadataParts || [])
+        .map((part) => part.accessibilityLabel || text(part.text))
+        .filter(Boolean)
+        .join(" · ");
+      const lockupThumbnails = lockup?.contentImage?.thumbnailViewModel?.image?.sources || [];
       output.push({
-        id: renderer.videoId,
-        title: text(renderer.title),
-        publishedText: text(renderer.publishedTimeText || renderer.upcomingEventData?.startTimeText),
-        thumbnail: thumbnails.at(-1)?.url || `https://i.ytimg.com/vi/${renderer.videoId}/hqdefault.jpg`,
+        id,
+        title: text(renderer?.title || lockupMetadata?.title),
+        publishedText: text(renderer?.publishedTimeText || renderer?.upcomingEventData?.startTimeText) || lockupPublishedText,
+        thumbnail: thumbnails.at(-1)?.url || lockupThumbnails.at(-1)?.url || "https://i.ytimg.com/vi/" + id + "/hqdefault.jpg",
       });
     }
     if (Array.isArray(node)) { for (const item of node) visit(item); return; }
